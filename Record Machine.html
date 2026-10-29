@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Factory Breakdown Record Machine</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2739; --line:#2a3550;
+    --ink:#e8edf7; --muted:#93a1bd; --accent:#ffb020; --accent2:#4da3ff;
+    --good:#3ddc97; --bad:#ff6b6b; --warn:#ffd166;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+       background:linear-gradient(180deg,#0c1018,#131a29);color:var(--ink);padding:0}
+  h1{font-size:24px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+
+  /* TOP BAR */
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;
+          background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  .topbar .title{display:flex;align-items:center;gap:12px}
+  .topbar .actions{display:flex;gap:8px}
+
+  /* FULL WIDTH LAYOUT */
+  .content{padding:20px 24px}
+
+  /* STATS */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  @media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .stat b{display:block;font-size:24px}
+  .stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+
+  /* FORM CARD */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:20px}
+  .card h2{font-size:15px;margin:0 0 16px;letter-spacing:.4px;text-transform:uppercase;color:var(--accent)}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit}
+  textarea{min-height:64px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.row{grid-template-columns:1fr}}
+  .btns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+  button{cursor:pointer;border:0;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600}
+  .primary{background:var(--accent);color:#20170a}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  .excel{background:#217346;color:#fff}
+  .fullscreen-btn{background:var(--accent2);color:#fff}
+
+  /* TOOLBAR */
+  .toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar input,.toolbar select{width:auto;flex:1;min-width:130px}
+
+  /* TABLE */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;white-space:nowrap}
+  tbody tr:hover{background:#ffffff08}
+  .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700}
+  .p-crit{background:#ff6b6b22;color:var(--bad)} .p-maj{background:#ffb02022;color:var(--accent)}
+  .p-min{background:#4da3ff22;color:var(--accent2)} .p-ok{background:#3ddc9722;color:var(--good)}
+  .del{background:none;border:0;color:var(--muted);cursor:pointer;font-size:15px;padding:2px 6px}
+  .del:hover{color:var(--bad)}
+  .empty{text-align:center;color:var(--muted);padding:30px;font-size:14px}
+  .tablewrap{overflow-x:auto;max-height:500px;overflow-y:auto}
+  .err{color:var(--bad);font-size:12px;margin-top:8px;min-height:16px}
+  .add-machine{display:flex;gap:6px;margin-top:6px}
+  .add-machine input{flex:1}
+  .add-machine button{white-space:nowrap;padding:6px 10px;font-size:12px}
+  .machine-list{margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;color:var(--muted)}
+  .machine-list span{display:inline-block;margin:2px 4px;padding:1px 6px;background:var(--panel2);border-radius:4px}
+
+  /* FULLSCREEN MODE */
+  body.fullscreen-mode .topbar{position:fixed;top:0;left:0;right:0}
+  body.fullscreen-mode .content{padding-top:60px}
+  body.fullscreen-mode table{font-size:14px}
+  body.fullscreen-mode th,body.fullscreen-mode td{padding:12px 10px}
+  body.fullscreen-mode .stat{padding:20px}
+  body.fullscreen-mode .stat b{font-size:28px}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="title">
+    <h1>⚙️ Factory Breakdown Record Machine</h1>
+    <span class="sub" style="margin:0">Track downtime &amp; MTTR</span>
+  </div>
+  <div class="actions">
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">🖥 Fullscreen</button>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><b id="sTotal">0</b><span>Total Breakdowns</span></div>
+    <div class="stat"><b id="sDown">0h</b><span>Total Downtime</span></div>
+    <div class="stat"><b id="sMttr">0h</b><span>Avg MTTR</span></div>
+    <div class="stat"><b id="sOpen">0</b><span>Open Issues</span></div>
+  </div>
+
+  <!-- FORM -->
+  <div class="card">
+    <h2>New Breakdown Record</h2>
+    <form id="frm">
+      <div class="row">
+        <div>
+          <label>Date &amp; Time of Breakdown *</label>
+          <input type="datetime-local" id="dt" required />
+        </div>
+        <div>
+          <label>Machine Name *</label>
+          <select id="machine" required>
+            <option value="">— Select Machine —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="add-machine">
+        <input id="newMachine" placeholder="Add new machine..." />
+        <button class="ghost" type="button" onclick="addMachine()">+ Add</button>
+      </div>
+      <div class="machine-list" id="machineList"></div>
+
+      <div class="row">
+        <div><label>Fault Type</label>
+          <select id="fault">
+            <option>Mechanical</option><option>Electrical</option><option>Hydraulic</option>
+            <option>Pneumatic</option><option>Software/Control</option><option>Operator Error</option>
+            <option>Planned Maintenance</option><option>Other</option>
+          </select>
+        </div>
+        <div><label>Severity</label>
+          <select id="sev"><option>Critical</option><option selected>Major</option><option>Minor</option></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div><label>Description of Fault</label>
+          <textarea id="desc" placeholder="Spindle overheated, stopped mid-run..." style="min-height:80px"></textarea>
+        </div>
+        <div><label>Description of Repair</label>
+          <textarea id="repair" placeholder="Replaced bearing, realigned shaft, tested OK..." style="min-height:80px"></textarea>
+        </div>
+      </div>
+
+      <div class="row">
+        <div><label>Repair Start (optional)</label><input type="datetime-local" id="rs" /></div>
+        <div><label>Repair End / Fixed At *</label><input type="datetime-local" id="re" required /></div>
+      </div>
+
+      <div class="row">
+        <div><label>Technician</label><input id="tech" placeholder="J. Okafor" /></div>
+        <div><label>Parts Replaced</label><input id="parts" placeholder="Bearing, belt" /></div>
+      </div>
+
+      <div class="row">
+        <div><label>Status</label>
+          <select id="status"><option>Resolved</option><option>In Progress</option><option>Awaiting Parts</option></select>
+        </div>
+        <div></div>
+      </div>
+
+      <div class="err" id="err"></div>
+      <div class="btns">
+        <button class="primary" type="submit">＋ Save Record</button>
+        <button class="ghost" type="reset" onclick="resetMachineList()">Clear</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- RECORDS -->
+  <div class="card">
+    <h2>Breakdown Log</h2>
+    <div class="toolbar">
+      <input id="q" placeholder="Search machine / fault / tech..." />
+      <select id="fSev"><option value="">All severities</option><option>Critical</option><option>Major</option><option>Minor</option></select>
+      <select id="fStat"><option value="">All statuses</option><option>Resolved</option><option>In Progress</option><option>Awaiting Parts</option></select>
+      <button class="excel" onclick="exportExcel()">📊 Save to Excel</button>
+      <button class="ghost" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="danger" onclick="clearAll()">🗑 Clear All</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th data-k="dt">When ⇅</th><th data-k="machine">Machine ⇅</th><th>Fault</th><th>Severity</th>
+          <th>Repair Desc</th><th>Downtime</th><th>Tech</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+      <div class="empty" id="empty" style="display:none">No records yet — add one above.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY='factory_breakdowns_v1';
+const MACHINE_KEY='factory_machines_v1';
+const DEFAULT_MACHINES=[
+  'Blow Moulder','Filler','Conveyor System','Date Coder','Labeller',
+  'Inspection I','Inspection II','Shrink Wrapper','Palletizer',
+  'Syrup & Mixer','Pasteurizer / UHT','CIP System',
+  'Air Compressor Low','Air Compressor High',
+  'Chiller','Water Treatment / RO','WP Ergon G',
+  'SMI PACKPOSER','AST Tank','WWTP',
+  'Fire Fighting','Generator','Electrical System','Other'
+];
+
+let machines = JSON.parse(localStorage.getItem(MACHINE_KEY)||'null') || [...DEFAULT_MACHINES];
+let rows = JSON.parse(localStorage.getItem(KEY)||'[]');
+let sortKey='dt', sortDir=-1;
+const $=id=>document.getElementById(id);
+const sevClass={Critical:'p-crit',Major:'p-maj',Minor:'p-min'};
+const statClass=s=>s==='Resolved'?'p-ok':'p-maj';
+
+function mins(a,b){ if(!a||!b) return null; const d=(new Date(b)-new Date(a))/60000; return d>=0?d:null; }
+function fmtDur(m){ if(m==null) return '—'; if(m<60) return m.toFixed(0)+'m'; const h=m/60; return h<24?h.toFixed(1)+'h':(h/24).toFixed(1)+'d'; }
+function fmtDT(s){ if(!s) return '—'; const d=new Date(s); return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function save(){ localStorage.setItem(KEY,JSON.stringify(rows)); }
+function saveMachines(){ localStorage.setItem(MACHINE_KEY,JSON.stringify(machines)); }
+
+function populateMachines(){
+  const sel=$('machine');
+  sel.innerHTML='<option value="">— Select Machine —</option>';
+  machines.sort().forEach(m=>{
+    const o=document.createElement('option');
+    o.value=m; o.textContent=m;
+    sel.appendChild(o);
+  });
+  $('machineList').innerHTML=machines.map(m=>`<span>${esc(m)}</span>`).join('');
+}
+
+function addMachine(){
+  const name=$('newMachine').value.trim();
+  if(!name) return;
+  if(machines.includes(name)) return alert('Machine already exists: '+name);
+  machines.push(name);
+  saveMachines();
+  populateMachines();
+  $('newMachine').value='';
+  $('machine').value=name;
+}
+
+function resetMachineList(){
+  machines=[...DEFAULT_MACHINES];
+  saveMachines();
+  populateMachines();
+}
+
+$('frm').addEventListener('submit',e=>{
+  e.preventDefault(); $('err').textContent='';
+  const r={ id:Date.now(), dt:$('dt').value, machine:$('machine').value, repair:$('repair').value.trim(),
+    fault:$('fault').value, sev:$('sev').value, desc:$('desc').value.trim(), rs:$('rs').value, re:$('re').value,
+    tech:$('tech').value.trim(), parts:$('parts').value.trim(), status:$('status').value };
+  if(!r.machine) return $('err').textContent='Please select a machine.';
+  if(mins(r.dt,r.re)==null) return $('err').textContent='Check dates: end must be after breakdown time.';
+  rows.push(r); save(); render(); $('frm').reset();
+  $('machineList').innerHTML=machines.map(m=>`<span>${esc(m)}</span>`).join('');
+});
+
+function del(id){ if(confirm('Delete this record?')){ rows=rows.filter(r=>r.id!==id); save(); render(); } }
+function clearAll(){ if(rows.length && confirm('Delete ALL records? This cannot be undone.')){ rows=[]; save(); render(); } }
+
+function filtered(){
+  const q=$('q').value.toLowerCase(), fs=$('fSev').value, fst=$('fStat').value;
+  return rows.filter(r=>(!fs||r.sev===fs)&&(!fst||r.status===fst)&&
+    (!q||[r.machine,r.fault,r.tech,r.desc,r.repair].join(' ').toLowerCase().includes(q)))
+    .sort((a,b)=>(a[sortKey]<b[sortKey]?-1:a[sortKey]>b[sortKey]?1:0)*sortDir);
+}
+
+function render(){
+  const list=filtered();
+  $('tb').innerHTML=list.map(r=>`<tr>
+    <td>${fmtDT(r.dt)}</td>
+    <td><b>${esc(r.machine)}</b></td>
+    <td>${esc(r.fault)}<br><small style="color:#93a1bd">${esc(r.desc||'')}</small></td>
+    <td><span class="pill ${sevClass[r.sev]}">${r.sev}</span></td>
+    <td><small style="color:#93a1bd">${esc(r.repair||'—')}</small></td>
+    <td>${fmtDur(mins(r.dt,r.re))}</td>
+    <td>${esc(r.tech||'—')}</td>
+    <td><span class="pill ${statClass(r.status)}">${r.status}</span></td>
+    <td><button class="del" title="Delete" onclick="del(${r.id})">✕</button></td>
+  </tr>`).join('');
+  $('empty').style.display=list.length?'none':'block';
+
+  const downs=rows.map(r=>mins(r.dt,r.re)).filter(v=>v!=null);
+  const total=downs.reduce((a,b)=>a+b,0);
+  $('sTotal').textContent=rows.length;
+  $('sDown').textContent=fmtDur(total);
+  $('sMttr').textContent=fmtDur(downs.length?total/downs.length:null);
+  $('sOpen').textContent=rows.filter(r=>r.status!=='Resolved').length;
+}
+
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+['q','fSev','fStat'].forEach(id=>$(id).addEventListener('input',render));
+document.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
+  const k=th.dataset.k; sortDir = sortKey===k ? -sortDir : 1; sortKey=k; render();
+});
+
+function exportExcel(){
+  if(!rows.length) return alert('Nothing to export.');
+  const header=['Breakdown Time','Machine','Fault Type','Severity','Description of Fault',
+                'Description of Repair','Repair Start','Repair End','Downtime (min)','Technician','Parts','Status'];
+  const data=rows.map(r=>[
+    r.dt, r.machine, r.fault, r.sev, r.desc, r.repair,
+    r.rs, r.re, mins(r.dt,r.re), r.tech, r.parts, r.status
+  ]);
+  const ws=XLSX.utils.aoa_to_sheet([header,...data]);
+  ws['!cols']=header.map((h,i)=>({wch:Math.max(h.length, ...data.map(row=>String(row[i]??'').length))+2}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Breakdowns');
+  XLSX.writeFile(wb,'breakdown_records.xlsx');
+}
+
+function exportCSV(){
+  if(!rows.length) return alert('Nothing to export.');
+  const cols=['dt','machine','fault','sev','desc','repair','rs','re','tech','parts','status'];
+  const csv=[cols.join(',')].concat(rows.map(r=>cols.map(c=>`"${(r[c]||'').replace(/"/g,'""')}"`).join(',')));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv.join('\n')],{type:'text/csv'}));
+  a.download='breakdown_records.csv'; a.click();
+}
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().then(()=>{
+      document.body.classList.add('fullscreen-mode');
+    }).catch(err=>console.log('Fullscreen error:',err));
+  } else {
+    document.exitFullscreen().then(()=>{
+      document.body.classList.remove('fullscreen-mode');
+    });
+  }
+}
+
+(function(){ const n=new Date(); n.setMinutes(n.getMinutes()-n.getTimezoneOffset());
+  $('dt').value=n.toISOString().slice(0,16); })();
+
+populateMachines();
+render();
+</script>
+</body>
+</html>
